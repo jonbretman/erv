@@ -1,0 +1,49 @@
+<!doctype html>
+<html>
+<style>
+    body, html {
+        padding: 0;
+        margin: 0;
+    }
+
+    * {
+        box-sizing: border-box;
+    }
+
+    .container {
+        width: 100%;
+        display: block;
+        padding: 1em;
+    }
+
+    .CodeMirror-code {
+        font-size: 18px;
+        line-height: 1.5em;
+        font-weight: bold;
+    }
+
+    #parsed, #editor {
+        font-family: monospace;
+        font-size: 16px;
+        line-height: 1.25em;
+        border: 1px solid #333;
+        margin: 1em 0;
+        min-height: 250px;
+        width: 100%;
+    }
+</style>
+<link href="codemirror.css" rel="stylesheet">
+<head>
+
+</head>
+<body>
+<button id="go">Parse</button>
+<div id="editor-container" class="container"></div>
+<code class="container">
+    <pre id="parsed"></pre>
+</code>
+<script src="codemirror.js"></script>
+<script src="mode.js"></script>
+<script src="parser.js"></script>
+</body>
+</html>
