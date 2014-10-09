@@ -38,6 +38,15 @@ function commaSentenceToArray(str) {
    });
 }
 
+function indentationNotAllowedMethod() {
+    if (this.line.children.length > 0) {
+        var err = new Error('StepParseError');
+        err.line = this.line.children[0];
+        err.reason = 'Indentation not allowed here!';
+        throw err;
+    }
+}
+
 function Step (definition, line) {
     this.definition = definition;
     this.line = line;
@@ -48,25 +57,52 @@ function Step (definition, line) {
 
 Step.prototype = {
 
+    _processConditionStatement: indentationNotAllowedMethod,
+    _processWaitStatement: indentationNotAllowedMethod,
+    _processTimeTriggerStatement: indentationNotAllowedMethod,
+    _processEventTriggerStatement: indentationNotAllowedMethod,
+
     _processSendEmailStatement: function () {
 
+        // no children is ok - just means there are no custom fields
         if (!this.line.children.length) {
             return;
         }
 
+        // build custom fields array
         this.definition.customFields = this.line.children.map(function (line) {
 
-            var match = line.stripped.match(/^([a-zA-Z0-9 ]+) *: *(.*?)$/);
+            var delimiter = line.stripped.indexOf(':');
+            var key = line.stripped.substring(0, delimiter);
+            var value = line.stripped.substring(delimiter + 1).trim();
 
-            if (!match) {
+            // if no key, or no value and no children then this is a syntax error
+            if (!key || (!value && !line.children.length)) {
                 var err = new Error('StepParseError');
                 err.line = line;
                 throw err;
             }
 
+            // must be a multi-line string
+            if (!value) {
+
+                var lastLineNo = Math.MAX_VALUE;
+
+                value = line.children.map(function (child) {
+                    var ret = child.stripped;
+                    if (child.lineNo > lastLineNo + 1) {
+                        ret = '\n' + ret;
+                    }
+                    lastLineNo = child.lineNo;
+                    return ret;
+                }).join('');
+
+            }
+
+            // return a custom field object
             return {
-                key: match[1],
-                value: match[2]
+                key: key,
+                value: value
             };
 
         }.bind(this));
@@ -116,7 +152,7 @@ Line.prototype = {
 
         var err = new Error('StepParseError');
         err.line = this;
-        err.reason = 'Unknown syntax';
+        err.reason = 'Unknown syntax!';
         throw err;
     }
 
@@ -147,7 +183,7 @@ function getRawTreeFromLines(lines) {
             if (!parentContext) {
                 var err = new Error('StepParseError');
                 err.line = line;
-                err.reason = 'Indentation without parent context.';
+                err.reason = 'Indentation not allowed here!';
                 throw err;
             }
 
