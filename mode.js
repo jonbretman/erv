@@ -1,114 +1,125 @@
 CodeMirror.defineMode("erv", function () {
 
-    var syntax = [];
+    var keywords = {
 
-    function registerSyntax (options) {
-        syntax.push(options);
-        return syntax[syntax.length - 1];
+        'EventTriggerPrefix': {
+            regex: /^when a user/,
+            variableFollowsUntilEOL: true
+        },
+
+        'RecurringTriggerOperator': {
+            regex: /^ at/,
+            variableFollowsUntilEOL: true
+        },
+
+        'RecurringTriggerPrefix': {
+            regex: /^every/,
+            variableFollowsUntil: 'RecurringTriggerOperator'
+        },
+
+        'OneOffTriggerPrefix': {
+            regex: /^on the/,
+            variableFollowsUntilEOL: true
+        },
+
+        'SendStatementSuffix': {
+            regex: /^ email/
+        },
+
+        'SendStatementPrefix': {
+            regex: /^send the/,
+            variableFollowsUntil: 'SendStatementSuffix'
+        },
+
+        'WaitStatement': {
+            regex: /^wait for/,
+            variableFollowsUntilEOL: true
+        },
+
+        'ConditionStatement': {
+            regex: /^if/,
+            variableFollowsUntilEOL: true
+        },
+
+        'TemplateParameterKey': {
+            regex: /^[^:]*:/,
+            token: 'variable-2',
+            variableFollowsUntilEOL: 'variable-3',
+            requiresIndent: true
+        }
+
+    };
+
+    var TOKEN_STRING = 'string';
+    var TOKEN_KEYWORD = 'keyword';
+
+    function nextTokenKnown(stream, state) {
+        var lookingFor = state.nextToken;
+        state.nextToken = null;
+        state.lastToken = lookingFor;
+        stream.match(lookingFor.regex);
+        state.tokenize = tokenBase;
+        return [lookingFor.token || TOKEN_KEYWORD, lookingFor.type].join(' ');
     }
 
-    var eventTriggerPrefix = registerSyntax({
-        token: 'keyword',
-        regex: /^when a user/,
-        sol: true,
-        variableFollowsUntilEOL: true
-    });
+    function variableUntilEndOfLine(stream, state) {
+        stream.skipToEnd();
+        var token = state.lastToken.variableFollowsUntilEOL;
+        state.lastToken = null;
+        return typeof token === 'string' ? token : TOKEN_STRING;
+    }
 
-    var recurringTriggerOperator = registerSyntax({
-        token: 'keyword',
-        regex: /^ at/,
-        variableFollowsUntilEOL: true
-    });
+    function variableUntilNextKeyword(stream, state) {
+        var lookingFor = keywords[state.lastToken.variableFollowsUntil];
+        lookingFor.type = state.lastToken.variableFollowsUntil;
+        state.lastToken = null;
 
-    var recurringTriggerPrefix = registerSyntax({
-        token: 'keyword',
-        regex: /^every/,
-        sol: true,
-        variableFollowsUntil: recurringTriggerOperator
-    });
+        while (!stream.eol()) {
 
-    var oneOffTriggerPrefix = registerSyntax({
-        token: 'keyword',
-        regex: /^on the/,
-        sol: true,
-        variableFollowsUntilEOL: true
-    });
+            if (stream.match(lookingFor.regex, false)) {
+                state.nextToken = lookingFor;
+                return TOKEN_STRING;
+            }
 
-    var sendStatementSuffix = registerSyntax({
-        token: 'keyword',
-        regex: /^ email/
-    });
+            stream.next();
+        }
 
-    var sendStatementPrefix = registerSyntax({
-        token: 'keyword',
-        regex: /^send the/,
-        sol: true,
-        variableFollowsUntil: sendStatementSuffix
-    });
-
-    var waitStatement = registerSyntax({
-        token: 'keyword',
-        regex: /^wait for/,
-        sol: true,
-        variableFollowsUntilEOL: true
-    });
-
-    registerSyntax({
-        token: 'keyword',
-        regex: /^if/,
-        sol: true,
-        variableFollowsUntilEOL: true
-    });
+        stream.next();
+        return TOKEN_STRING;
+    }
 
     function tokenBase(stream, state) {
 
-        var lookingFor, i;
-
         // possible state where we know the next token but just need to consume it
         if (state.nextToken) {
-            lookingFor = state.nextToken;
-            state.nextToken = null;
-            state.lastToken = lookingFor;
-            stream.match(lookingFor.regex);
-            return lookingFor.token;
+            return nextTokenKnown(stream, state);
         }
 
         // check the lastToken match to see if it has further logic
         if (state.lastToken) {
 
+            // check if rest of the line is a literal
             if (state.lastToken.variableFollowsUntilEOL) {
-                stream.skipToEnd();
-                state.lastToken = null;
-                return 'string';
+                return variableUntilEndOfLine(stream, state);
             }
 
+            // check if there is a literal only until another keyword is found
             if (state.lastToken.variableFollowsUntil) {
-
-                lookingFor = state.lastToken.variableFollowsUntil;
-                state.lastToken = null;
-
-                while (!stream.eol()) {
-
-                    if (stream.match(lookingFor.regex, false)) {
-                        state.nextToken = lookingFor;
-                        return 'string';
-                    }
-
-                    stream.next();
-                }
-
-                stream.next();
-                return 'string';
+                return variableUntilNextKeyword(stream, state);
             }
 
         }
 
-        // check known syntax
-        for (i = 0; i < syntax.length; i++) {
+        for (var key in keywords) {
 
-            if (stream.match(syntax[i].regex)) {
-                state.lastToken = syntax[i];
-                return syntax[i].token;
+            if (keywords[key].requiresIndent && stream.indentation() === 0) {
+                continue;
+            }
+
+            if (stream.match(keywords[key].regex)) {
+                state.lastToken = keywords[key];
+                state.lastToken.type = key;
+                return [keywords[key].token || TOKEN_KEYWORD, key].join(' ');
             }
 
         }

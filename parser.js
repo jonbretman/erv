@@ -71,7 +71,7 @@ Step.prototype = {
 
         }.bind(this));
 
-    },
+    }
 
 };
 
@@ -116,6 +116,7 @@ Line.prototype = {
 
         var err = new Error('StepParseError');
         err.line = this;
+        err.reason = 'Unknown syntax';
         throw err;
     }
 
@@ -141,6 +142,15 @@ function getRawTreeFromLines(lines) {
         }
 
         if (line.indent > lastIndent) {
+            var parentContext = context[context.length - 1].slice(-1)[0];
+
+            if (!parentContext) {
+                var err = new Error('StepParseError');
+                err.line = line;
+                err.reason = 'Indentation without parent context.';
+                throw err;
+            }
+
             context.push(context[context.length - 1].slice(-1)[0].children);
         }
 
@@ -163,14 +173,7 @@ function parse(lines) {
     });
 }
 
-var cm = CodeMirror(document.getElementById('editor-container'), {
-    mode: 'erv',
-    tabSize: 4,
-    indentWithTabs: false,
-    indentUnit: 4
-});
-
-cm.on('change', function (codeMirror) {
+function onEditorContentChange(codeMirror) {
 
     var lines = [];
     var ast;
@@ -187,6 +190,7 @@ cm.on('change', function (codeMirror) {
             ast = {
                 error: e.message,
                 lineNo: e.line.lineNo,
+                reason: e.reason,
                 source: e.line.source
             };
         }
@@ -197,4 +201,15 @@ cm.on('change', function (codeMirror) {
     }
 
     document.getElementById('parsed').innerHTML = JSON.stringify(ast, null, '  ');
+}
+
+var editorContainer = document.getElementById('editor-container');
+
+var cm = new CodeMirror(editorContainer, {
+    mode: 'erv',
+    tabSize: 4,
+    indentWithTabs: false,
+    indentUnit: 4
 });
+
+cm.on('change', onEditorContentChange);
