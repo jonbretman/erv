@@ -4,6 +4,8 @@
     body, html {
         padding: 0;
         margin: 0;
+        height: 100%;
+        font-size: 18px;
     }
 
     * {
@@ -11,39 +13,40 @@
     }
 
     .container {
-        width: 100%;
+        width: 50%;
+        float: left;
+        height: 100%;
         display: block;
         padding: 1em;
+        margin: 0;
+        border: 1px solid #efefef;
+    }
+
+    pre.container {
+        overflow: scroll;
     }
 
     .CodeMirror-code {
-        font-size: 18px;
+        /*font-size: 18px;*/
         line-height: 1.5em;
         font-weight: bold;
     }
 
-    #parsed, #editor {
-        font-family: monospace;
-        font-size: 16px;
-        line-height: 1.25em;
-        border: 1px solid #333;
-        margin: 1em 0;
-        min-height: 250px;
-        width: 100%;
-    }
 </style>
-<link href="codemirror.css" rel="stylesheet">
+<link href="lib/codemirror.css" rel="stylesheet">
 <head>
 
 </head>
 <body>
-<button id="go">Parse</button>
+
 <div id="editor-container" class="container"></div>
-<code class="container">
-    <pre id="parsed"></pre>
-</code>
-<script src="codemirror.js"></script>
-<script src="mode.js"></script>
-<script src="parser.js"></script>
+
+<pre class="container">
+<code id="parsed"></code>
+</pre>
+
+<script src="lib/codemirror.js"></script>
+<script src="src/mode/erv.js"></script>
+<script src="src/erv.js"></script>
 </body>
 </html>
