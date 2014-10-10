@@ -1,5 +1,6 @@
 <!doctype html>
 <html>
+<link href="lib/codemirror.css" rel="stylesheet">
 <style>
     body, html {
         padding: 0;
@@ -19,21 +20,25 @@
         display: block;
         padding: 1em;
         margin: 0;
-        border: 1px solid #efefef;
     }
 
     pre.container {
         overflow: scroll;
     }
 
+    .CodeMirror, .container code {
+        height: 100%;
+        border: 1px solid #efefef;
+        display: block;
+        width: 100%;
+    }
+
     .CodeMirror-code {
-        /*font-size: 18px;*/
         line-height: 1.5em;
         font-weight: bold;
     }
 
 </style>
-<link href="lib/codemirror.css" rel="stylesheet">
 <head>
 
 </head>

@@ -1,250 +1,317 @@
-var syntax = [];
-
-syntax.push(['EventTriggerStatement', /^when a user (.*?)$/i, function (eventName) {
-    return {
-        eventName: eventName
-    };
-}]);
-
-syntax.push(['TimeTriggerStatement', /^every (.*?) at (.*?)$/i, function (days, times) {
-    return {
-        days: commaSentenceToArray(days),
-        times: commaSentenceToArray(times)
-    };
-}]);
-
-syntax.push(['SendEmailStatement', /^send (.*?) email(| with custom fields)$/i, function (template, customFields) {
-    return {
-        template: template,
-        customFields: !!customFields.trim()
-    };
-}]);
-
-syntax.push(['WaitStatement', /^wait for (.*?) days$/i, function (days) {
-    return {
-        days: parseInt(days, 10)
-    };
-}]);
-
-syntax.push(['ConditionStatement', /^if (.*?)$/i, function (condition) {
-    return {
-        condition: condition
-    };
-}]);
-
-function commaSentenceToArray(str) {
-    return str.split(/,| and /).map(function (s) {
-        return s.trim();
-    });
+function Erv(campaign) {
+    this.campaign = campaign || null;
 }
 
-function indentationNotAllowedMethod() {
-    if (this.line.children.length > 0) {
-        var err = new Error('StepParseError');
-        err.line = this.line.children[0];
-        err.reason = 'Indentation not allowed here!';
-        throw err;
-    }
-}
+Erv.prototype = {
 
-function Step(definition, line) {
-    this.definition = definition;
-    this.line = line;
-    if (this['_process' + definition.type]) {
-        this['_process' + definition.type]();
-    }
-}
+    toJSON: function () {
+        return this.campaign;
+    },
 
-Step.prototype = {
+    toString: function () {
+        return '';
+    },
 
-    _processConditionStatement: indentationNotAllowedMethod,
-    _processWaitStatement: indentationNotAllowedMethod,
-    _processTimeTriggerStatement: indentationNotAllowedMethod,
-    _processEventTriggerStatement: indentationNotAllowedMethod,
+    _programStringToAst: function (str) {
 
-    _processSendEmailStatement: function () {
+        var lines = str.split('\n');
+        var line;
+        var result = [];
+        var context = [result];
+        var lastIndent = 0;
+        var i = 0;
+        var j = 0;
 
-        // no children is ok - just means there are no custom fields
-        if (!this.line.children.length) {
-            return;
+        function last(arr) {
+            return arr[arr.length - 1];
         }
 
-        // build custom fields array
-        this.definition.customFields = this.line.children.map(function (line) {
+        for (; i < lines.length; i++) {
 
-            var delimiter = line.stripped.indexOf(':');
-            var key = line.stripped.substring(0, delimiter);
-            var value = line.stripped.substring(delimiter + 1).trim();
-            var lastLineNo = line.lineNo;
+            line = this._astLineFromString(lines[i], i + 1);
 
-            // if no key then this is a syntax error
-            if (!key) {
-                var err = new Error('StepParseError');
-                err.line = line;
-                err.reason = 'Invalid custom field!';
-                throw err;
+            if (!line.stripped) {
+                continue;
             }
 
-            // join together any child lines text treating empty lines like paragraph breaks
-            value += line.children.map(function (child) {
+            if (line.indent < lastIndent) {
+                for (j = 0; j < lastIndent - line.indent; j++) {
+                    context.pop();
+                }
+            }
 
-                var ret = child.stripped;
+            if (line.indent > lastIndent) {
+                var parentContext = last(last(context));
 
-                if (child.lineNo > lastLineNo + 1) {
-                    ret = '\n' + ret;
+                if (!parentContext) {
+                    line.error = 'Indentation is not allowed here.';
+                    result.push(line);
+                    return result;
                 }
 
-                lastLineNo = child.lineNo;
-                return ret;
+                context.push(parentContext.children);
+            }
 
-            }).join(' ');
+            last(context).push(line);
+            lastIndent = line.indent;
+        }
 
-            // return a custom field object
+        return result;
+    },
+
+    _astLineFromString: function (str, lineNo) {
+        var astLine = {};
+        astLine.source = str.replace(/\t/g, '    ');
+        astLine.lineNo = lineNo;
+        astLine.stripped = str.trim();
+        astLine.children = [];
+
+        for (var i = 0, count = 0; i < astLine.source.length; i++) {
+
+            if (astLine.source[i] === ' ') {
+                count++;
+            }
+
+            else {
+                break;
+            }
+
+        }
+
+        astLine.indent = Math.floor(count / 4);
+        return astLine;
+    },
+
+    _setCampaignFromAstLine: function (astLine) {
+
+        var str = astLine.stripped;
+        var campaign = this.campaign = {
+            steps: [],
+            errors: []
+        };
+
+        if (!str) {
+            campaign.errors.push(new Error(str + ' is not a valid campaign trigger.'));
+            return this;
+        }
+
+        var match = str.match(/^when a user (.*?)$/i);
+        if (match) {
+            campaign.eventType = match[1];
+            campaign.type = 'E';
+            return this;
+        }
+
+        match = str.match(/^every (.*?) at (.*?)$/i);
+        if (match) {
+            campaign.type = 'P';
+            try {
+                campaign.weekdays = this._parseWeekdays(match[1]);
+            }
+            catch (e) {
+                campaign.errors.push(e);
+            }
+            try {
+                campaign.hours = this._parseTimes(match[2]);
+            }
+            catch (e) {
+                campaign.errors.push(e);
+            }
+            return this;
+        }
+
+        match = str.match(/on ([\d\/]+) at (.*?)$/i);
+        if (match) {
+            campaign.type = 'O';
+            campaign.localDatetime = match[1] + ' ' + match[2];
+            return this;
+        }
+
+        campaign.errors.push(new Error(str + ' is not a valid campaign trigger.'));
+        return this;
+    },
+
+    _setCampaignStepsFromAstLines: function (astLines) {
+        this.campaign.steps = astLines.map(this._stepFromAstLine.bind(this));
+        return this;
+    },
+
+    _stepFromAstLine: function (astLine) {
+        var campaignStep = {
+            errors: []
+        };
+
+        var match = astLine.stripped.match(/^send the (.*?) email$/);
+        if (match) {
+            campaignStep.type = 'email';
+            campaignStep.emailTemplate = match[1].toLowerCase().replace(/ /g, '_');
+            campaignStep.emailTemplateParams = astLine.children.map(this._parseEmailTemplateParamAst.bind(this));
+            return campaignStep;
+        }
+
+        match = astLine.stripped.match(/^if (.*?)$/);
+        if (match) {
+            campaignStep.type = 'condition';
+            campaignStep.conditionFunction  = match[1].toLowerCase().replace(/ /g, '_');
+            return campaignStep;
+        }
+
+        match = astLine.stripped.match(/^wait for (.*?) (.*?)$/i);
+        if (match) {
+            campaignStep.type = 'wait';
+            var unit = match[2].toLowerCase();
+            var multiplier;
+            switch (unit) {
+                case 'mins':
+                case 'minute':
+                case 'minutes':
+                    multiplier = 1;
+                    break;
+                case 'hour':
+                case 'hours':
+                    multiplier = 60;
+                    break;
+                case 'day':
+                case 'days':
+                    multiplier = 60 * 24;
+                    break;
+                default :
+                    campaignStep.errors.push(new Error(unit + ' is not a valid wait unit.'));
+                    return campaignStep;
+
+            }
+
+            var n = parseInt(match[1], 10);
+            if (isNaN(n)) {
+                campaignStep.errors.push(new Error(n + ' is not a valid wait amount.'));
+                return campaignStep;
+            }
+
+            campaignStep.waitMinutes = n * multiplier;
+            return campaignStep;
+        }
+
+        return campaignStep;
+    },
+
+    _parseEmailTemplateParamAst: function (astLine) {
+        var delimiter = astLine.stripped.indexOf(':');
+        var key = astLine.stripped.substring(0, delimiter);
+        var value = astLine.stripped.substring(delimiter + 1).trim();
+        var lastLineNo = astLine.lineNo;
+
+        // if no key then this is a syntax error
+        if (!key) {
+            this.errors.push(new Error(astLine.stripped + ' is not a valid custom field'));
             return {
-                key: key,
-                value: value
+                key: '',
+                value: ''
             };
+        }
 
-        }.bind(this));
+        // join together any child lines text treating empty lines like paragraph breaks
+        value += astLine.children.map(function (child) {
 
+            var ret = child.stripped;
+
+            if (child.lineNo > lastLineNo + 1) {
+                ret = '\n' + ret;
+            }
+
+            lastLineNo = child.lineNo;
+            return ret;
+
+        }).join(' ');
+
+        // return a custom field object
+        return {
+            key: key,
+            value: value
+        };
+    },
+
+    _parseWeekdays: function (str) {
+
+        var arr = this._commaSentenceToArray(str);
+        var map = {
+            'monday': 1,
+            'tuesday': 2,
+            'wednesday': 3,
+            'thursday': 4,
+            'friday': 5,
+            'saturday': 6,
+            'sunday': 7
+        };
+
+        return arr.map(function (day) {
+            if (!map[day.toLowerCase()]) {
+                throw new Error(day + ' is not a valid weekday.');
+            }
+            return map[day.toLowerCase()];
+        });
+    },
+
+    _parseTimes: function(str) {
+        var arr = this._commaSentenceToArray(str);
+        return arr.map(this._parseTime.bind(this));
+    },
+
+    _parseTime: function(str) {
+        var errorMessage = str + ' is not a valid time.';
+        var match = str.match(/^([\d\.]+)(pm|am)$/i);
+
+        if (!match) {
+            throw new Error(errorMessage);
+        }
+
+        var hoursMinutes = match[1].split('.');
+        var amPm = match[2].toLowerCase();
+
+        if (hoursMinutes.length > 2 || (amPm !== 'am' && amPm !== 'pm')) {
+            throw new Error(errorMessage);
+        }
+
+        var hours = parseInt(hoursMinutes[0], 10);
+        var minutes = hoursMinutes.length === 1 ? 0 : parseInt(hoursMinutes[1], 10);
+
+        if (isNaN(hours) || hours < 0 || hours > 12 ||
+            isNaN(minutes) || minutes < 0 || minutes > 59) {
+            throw new Error(errorMessage);
+        }
+
+        if (amPm === 'pm') {
+            hours = hours + 12;
+        }
+
+        return (hours * 100) + minutes;
+    },
+
+    _commaSentenceToArray: function(str) {
+        return str.split(/,| and /).map(function (s) {
+            return s.trim();
+        });
     }
 
 };
 
-function Line(source, lineNo) {
-    this.source = source.replace(/\t/g, '    ');
-    this.lineNo = lineNo;
-    this.stripped = source.trim();
-    this.children = [];
-
-    for (var i = 0, count = 0; i < this.source.length; i++) {
-
-        if (this.source[i] === ' ') {
-            count++;
-        }
-
-        else {
-            break;
-        }
-
-    }
-
-    this.indent = Math.floor(count / 4);
-}
-
-Line.prototype = {
-
-    toStep: function () {
-
-        for (var i = 0; i < syntax.length; i++) {
-
-            var type = syntax[i];
-            var match = this.stripped.match(type[1]);
-
-            if (match) {
-
-                var def = type[2].apply(null, match.slice(1));
-                def.type = type[0];
-
-                return new Step(def, this);
-            }
-        }
-
-        var err = new Error('StepParseError');
-        err.line = this;
-        err.reason = 'Unknown syntax!';
-        throw err;
-    }
-
+Erv.fromString = function (str) {
+    var erv = new Erv();
+    var ast = erv._programStringToAst(str);
+    erv._setCampaignFromAstLine(ast[0]);
+    erv._setCampaignStepsFromAstLines(ast.slice(1));
+    return erv;
 };
-
-function times(n, fn) {
-    for (var i = 0; i < n; i++) {
-        fn();
-    }
-}
-
-function getRawTreeFromLines(lines) {
-
-    var line;
-    var result = [];
-    var context = [result];
-    var lastIndent = 0;
-
-    for (var i = 0; i < lines.length; i++) {
-
-        line = new Line(lines[i], i + 1);
-
-        if (!line.stripped) {
-            continue;
-        }
-
-        if (line.indent < lastIndent) {
-            times(lastIndent - line.indent, function () {
-                context.pop();
-            });
-        }
-
-        if (line.indent > lastIndent) {
-            var parentContext = context[context.length - 1].slice(-1)[0];
-
-            if (!parentContext) {
-                var err = new Error('StepParseError');
-                err.line = line;
-                err.reason = 'Indentation not allowed here!';
-                throw err;
-            }
-
-            context.push(context[context.length - 1].slice(-1)[0].children);
-        }
-
-        context[context.length - 1].push(line);
-        lastIndent = line.indent;
-    }
-
-    return result;
-}
-
-function parse(lines) {
-    var rawTree = getRawTreeFromLines(lines);
-
-    var ast = rawTree.map(function (line) {
-        return line.toStep();
-    });
-
-    return ast.map(function (step) {
-        return step.definition;
-    });
-}
 
 function onEditorContentChange(codeMirror) {
 
-    var lines = [];
-    var ast;
-
+    var source = '';
     codeMirror.eachLine(function (line) {
-        lines.push(line.text);
+        source += '\n' + line.text;
     });
+    source = source.replace(/\t/g, '    ');
 
-    try {
-        ast = parse(lines);
-    } catch (e) {
-        if (e.message === 'StepParseError') {
-            // invalid syntax - highlight in editor
-            ast = {
-                error: e.message,
-                lineNo: e.line.lineNo,
-                reason: e.reason,
-                source: e.line.source
-            };
-        }
-        else {
-            // some other error :(
-            throw e;
-        }
-    }
-
-    document.getElementById('parsed').innerHTML = JSON.stringify(ast, null, '  ');
+    var erv = Erv.fromString(source);
+    document.getElementById('parsed').innerHTML = JSON.stringify(erv.campaign, null, '  ');
 }
 
 var editorContainer = document.getElementById('editor-container');

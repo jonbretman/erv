@@ -66,7 +66,7 @@ CodeMirror.defineMode("erv", function () {
                     break;
 
                 case TIME_TRIGGER_OPERATOR:
-                    if (stream.match(/^at/)) {
+                    if (stream.match(/^at/) && stream.peek() === ' ') {
                         state.acceptStringUntil = END_OF_LINE;
                         return ret(TOKEN_KEYWORD);
                     }
