@@ -97,7 +97,7 @@ Step.prototype = {
                 lastLineNo = child.lineNo;
                 return ret;
 
-            }).join('');
+            }).join(' ');
 
             // return a custom field object
             return {
