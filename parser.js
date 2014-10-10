@@ -33,9 +33,9 @@ syntax.push(['ConditionStatement', /^if (.*?)$/i, function (condition) {
 }]);
 
 function commaSentenceToArray(str) {
-   return str.split(/,| and /).map(function (s) {
-       return s.trim();
-   });
+    return str.split(/,| and /).map(function (s) {
+        return s.trim();
+    });
 }
 
 function indentationNotAllowedMethod() {
@@ -47,7 +47,7 @@ function indentationNotAllowedMethod() {
     }
 }
 
-function Step (definition, line) {
+function Step(definition, line) {
     this.definition = definition;
     this.line = line;
     if (this['_process' + definition.type]) {
@@ -75,29 +75,29 @@ Step.prototype = {
             var delimiter = line.stripped.indexOf(':');
             var key = line.stripped.substring(0, delimiter);
             var value = line.stripped.substring(delimiter + 1).trim();
+            var lastLineNo = line.lineNo;
 
-            // if no key, or no value and no children then this is a syntax error
-            if (!key || (!value && !line.children.length)) {
+            // if no key then this is a syntax error
+            if (!key) {
                 var err = new Error('StepParseError');
                 err.line = line;
+                err.reason = 'Invalid custom field!';
                 throw err;
             }
 
-            // must be a multi-line string
-            if (!value) {
+            // join together any child lines text treating empty lines like paragraph breaks
+            value += line.children.map(function (child) {
 
-                var lastLineNo = Math.MAX_VALUE;
+                var ret = child.stripped;
 
-                value = line.children.map(function (child) {
-                    var ret = child.stripped;
-                    if (child.lineNo > lastLineNo + 1) {
-                        ret = '\n' + ret;
-                    }
-                    lastLineNo = child.lineNo;
-                    return ret;
-                }).join('');
+                if (child.lineNo > lastLineNo + 1) {
+                    ret = '\n' + ret;
+                }
 
-            }
+                lastLineNo = child.lineNo;
+                return ret;
+
+            }).join('');
 
             // return a custom field object
             return {
@@ -111,7 +111,7 @@ Step.prototype = {
 
 };
 
-function Line (source, lineNo) {
+function Line(source, lineNo) {
     this.source = source.replace(/\t/g, '    ');
     this.lineNo = lineNo;
     this.stripped = source.trim();
@@ -158,6 +158,12 @@ Line.prototype = {
 
 };
 
+function times(n, fn) {
+    for (var i = 0; i < n; i++) {
+        fn();
+    }
+}
+
 function getRawTreeFromLines(lines) {
 
     var line;
@@ -174,7 +180,9 @@ function getRawTreeFromLines(lines) {
         }
 
         if (line.indent < lastIndent) {
-            context.pop();
+            times(lastIndent - line.indent, function () {
+                context.pop();
+            });
         }
 
         if (line.indent > lastIndent) {

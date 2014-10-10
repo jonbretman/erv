@@ -1,131 +1,126 @@
 CodeMirror.defineMode("erv", function () {
 
-    var keywords = {
-
-        'EventTriggerPrefix': {
-            regex: /^when a user/,
-            variableFollowsUntilEOL: true
-        },
-
-        'RecurringTriggerOperator': {
-            regex: /^ at/,
-            variableFollowsUntilEOL: true
-        },
-
-        'RecurringTriggerPrefix': {
-            regex: /^every/,
-            variableFollowsUntil: 'RecurringTriggerOperator'
-        },
-
-        'OneOffTriggerPrefix': {
-            regex: /^on the/,
-            variableFollowsUntilEOL: true
-        },
-
-        'SendStatementSuffix': {
-            regex: /^ email/
-        },
-
-        'SendStatementPrefix': {
-            regex: /^send the/,
-            variableFollowsUntil: 'SendStatementSuffix'
-        },
-
-        'WaitStatement': {
-            regex: /^wait for/,
-            variableFollowsUntilEOL: true
-        },
-
-        'ConditionStatement': {
-            regex: /^if/,
-            variableFollowsUntilEOL: true
-        },
-
-        'TemplateParameterKey': {
-            regex: /^[^:]*:/,
-            token: 'variable-2',
-            variableFollowsUntilEOL: 'variable-3',
-            requiresIndent: true
-        }
-
-    };
-
-    var TOKEN_STRING = 'string';
     var TOKEN_KEYWORD = 'keyword';
+    var TOKEN_STRING = 'string';
+    var TOKEN_CUSTOM_FIELD_KEY = 'variable-2';
+    var TOKEN_CUSTOM_FIELD_VALUE = 'variable-3';
 
-    function nextTokenKnown(stream, state) {
-        var lookingFor = state.nextToken;
-        state.nextToken = null;
-        state.lastToken = lookingFor;
-        stream.match(lookingFor.regex);
-        state.tokenize = tokenBase;
-        return [lookingFor.token || TOKEN_KEYWORD, lookingFor.type].join(' ');
-    }
+    var SEND_STATEMENT_PREFIX = 'SendStatementPrefix';
+    var SEND_STATEMENT_SUFFIX = 'SendStatementSuffix';
+    var CUSTOM_FIELD_KEY = 'CustomFieldKey';
+    var EVENT_TRIGGER_STATEMENT = 'EventTriggerStatement';
+    var TIME_TRIGGER_STATEMENT = 'TimeTriggerStatement';
+    var TIME_TRIGGER_OPERATOR = 'TimeTriggerOperator';
+    var WAIT_STATEMENT = 'WaitStatement';
+    var CONDITION_STATEMENT = 'ConditionStatement';
 
-    function variableUntilEndOfLine(stream, state) {
-        stream.skipToEnd();
-        var token = state.lastToken.variableFollowsUntilEOL;
-        state.lastToken = null;
-        return typeof token === 'string' ? token : TOKEN_STRING;
-    }
+    var END_OF_LINE = 'EOL';
 
-    function variableUntilNextKeyword(stream, state) {
-        var lookingFor = keywords[state.lastToken.variableFollowsUntil];
-        lookingFor.type = state.lastToken.variableFollowsUntil;
-        state.lastToken = null;
+    var lastToken = null;
 
-        while (!stream.eol()) {
-
-            if (stream.match(lookingFor.regex, false)) {
-                state.nextToken = lookingFor;
-                return TOKEN_STRING;
-            }
-
-            stream.next();
-        }
-
-        stream.next();
-        return TOKEN_STRING;
+    function ret(token) {
+        lastToken = token;
+        return token;
     }
 
     function tokenBase(stream, state) {
 
-        // possible state where we know the next token but just need to consume it
-        if (state.nextToken) {
-            return nextTokenKnown(stream, state);
+        var ch = stream.peek();
+
+        // clear last token at the start of each line
+        if (stream.sol()) {
+            lastToken = null;
         }
 
-        // check the lastToken match to see if it has further logic
-        if (state.lastToken) {
-
-            // check if rest of the line is a literal
-            if (state.lastToken.variableFollowsUntilEOL) {
-                return variableUntilEndOfLine(stream, state);
-            }
-
-            // check if there is a literal only until another keyword is found
-            if (state.lastToken.variableFollowsUntil) {
-                return variableUntilNextKeyword(stream, state);
-            }
-
+        // ignore whitespace
+        if (ch === ' ') {
+            stream.next();
+            return null;
         }
 
-        for (var key in keywords) {
+        // support for multi-line custom field values
+        if (state.lastKeyword === CUSTOM_FIELD_KEY) {
 
-            if (keywords[key].requiresIndent && stream.indentation() === 0) {
-                continue;
+            if (lastToken === TOKEN_CUSTOM_FIELD_KEY && ch === ':') {
+                stream.next();
+                return null;
+            }
+            else if (lastToken || stream.indentation() > state.customFieldIndent) {
+                stream.skipToEnd();
+                return TOKEN_CUSTOM_FIELD_VALUE;
             }
 
-            if (stream.match(keywords[key].regex)) {
-                state.lastToken = keywords[key];
-                state.lastToken.type = key;
-                return [keywords[key].token || TOKEN_KEYWORD, key].join(' ');
-            }
-
+            // custom field value has finished - clear the indent value
+            state.customFieldIndent = null;
         }
 
-        // advance stream
+        // support unquoted dynamic input
+        if (state.acceptStringUntil) {
+            switch (state.acceptStringUntil) {
+
+                case SEND_STATEMENT_SUFFIX:
+                    if (stream.match(/^email/) && stream.eol()) {
+                        state.acceptStringUntil = null;
+                        return ret(TOKEN_KEYWORD);
+                    }
+                    break;
+
+                case TIME_TRIGGER_OPERATOR:
+                    if (stream.match(/^at/)) {
+                        state.acceptStringUntil = END_OF_LINE;
+                        return ret(TOKEN_KEYWORD);
+                    }
+                    break;
+
+                case END_OF_LINE:
+                    stream.skipToEnd();
+                    state.acceptStringUntil = null;
+                    return ret(TOKEN_STRING);
+
+            }
+
+            stream.next();
+            return ret(TOKEN_STRING);
+        }
+
+        if (stream.sol() && stream.match(/^send the/i)) {
+            state.lastKeyword = SEND_STATEMENT_PREFIX;
+            state.acceptStringUntil = SEND_STATEMENT_SUFFIX;
+            return ret(TOKEN_KEYWORD);
+        }
+
+        if (stream.sol() && stream.match(/^every/i)) {
+            state.lastKeyword = TIME_TRIGGER_STATEMENT;
+            state.acceptStringUntil = TIME_TRIGGER_OPERATOR;
+            return ret(TOKEN_KEYWORD);
+        }
+
+        if (stream.sol() && stream.match(/^wait for/i)) {
+            state.lastKeyword = WAIT_STATEMENT;
+            state.acceptStringUntil = END_OF_LINE;
+            return ret(TOKEN_KEYWORD);
+        }
+
+        if (stream.sol() && stream.match(/^if/i)) {
+            state.lastKeyword = CONDITION_STATEMENT;
+            state.acceptStringUntil = END_OF_LINE;
+            return ret(TOKEN_KEYWORD);
+        }
+
+        if (stream.sol() && stream.match(/^when a user/i)) {
+            state.lastKeyword = EVENT_TRIGGER_STATEMENT;
+            state.acceptStringUntil = END_OF_LINE;
+            return ret(TOKEN_KEYWORD);
+        }
+
+        if (stream.indentation() > 0 && stream.match(/^[^:]*/)) {
+            state.lastKeyword = CUSTOM_FIELD_KEY;
+            state.customFieldIndent = stream.indentation();
+            return ret(TOKEN_CUSTOM_FIELD_KEY);
+        }
+
         stream.next();
+        return null;
     }
 
     return {
