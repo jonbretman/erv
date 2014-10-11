@@ -4,6 +4,12 @@ module.exports = function (grunt) {
 
     grunt.initConfig({
 
+        jshint: {
+            src: [
+                'src/**/*.js'
+            ]
+        },
+
         karma: {
             options: {
                 reporters: ['mocha', 'coverage'],
@@ -38,5 +44,8 @@ module.exports = function (grunt) {
         }
 
     });
+
+    grunt.registerTask('test', ['karma']);
+    grunt.registerTask('default', ['jshint', 'test']);
 
 };

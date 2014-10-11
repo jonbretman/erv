@@ -91,6 +91,10 @@ Erv.prototype = {
         };
 
         if (!astLine) {
+            this.errors.push({
+                line: astLine,
+                message: 'A campaign must start with a valid trigger eg. "when", "on", or "at"'
+            });
             return this;
         }
 
