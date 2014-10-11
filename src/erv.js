@@ -1,23 +1,21 @@
 function Erv(campaign) {
     this.campaign = campaign || null;
+    this.ast = [];
+    this.programString = '';
+    this.errors = [];
 }
 
 Erv.prototype = {
 
-    toJSON: function () {
-        return this.campaign;
-    },
+    setProgramString: function (str) {
 
-    toString: function () {
-        return '';
-    },
+        this.programString = str;
+        this.ast = [];
 
-    _programStringToAst: function (str) {
-
+        var ast = this.ast;
         var lines = str.split('\n');
         var line;
-        var result = [];
-        var context = [result];
+        var context = [ast];
         var lastIndent = 0;
         var i = 0;
         var j = 0;
@@ -44,9 +42,12 @@ Erv.prototype = {
                 var parentContext = last(last(context));
 
                 if (!parentContext) {
-                    line.error = 'Indentation is not allowed here.';
-                    result.push(line);
-                    return result;
+                    this.errors.push({
+                        line: line,
+                        message: 'Indentation is not allowed here.'
+                    });
+                    ast.push(line);
+                    break;
                 }
 
                 context.push(parentContext.children);
@@ -56,7 +57,10 @@ Erv.prototype = {
             lastIndent = line.indent;
         }
 
-        return result;
+
+        this._setCampaignFromAstLine(ast[0]);
+        this._setCampaignStepsFromAstLines(ast.slice(1));
+        return this;
     },
 
     _astLineFromString: function (str, lineNo) {
@@ -86,12 +90,14 @@ Erv.prototype = {
 
         var str = astLine.stripped;
         var campaign = this.campaign = {
-            steps: [],
-            errors: []
+            steps: []
         };
 
         if (!str) {
-            campaign.errors.push(new Error(str + ' is not a valid campaign trigger.'));
+            this.errors.push({
+                line: astLine,
+                message: str + ' is not a valid campaign trigger.'
+            });
             return this;
         }
 
@@ -109,13 +115,19 @@ Erv.prototype = {
                 campaign.weekdays = this._parseWeekdays(match[1]);
             }
             catch (e) {
-                campaign.errors.push(e);
+                this.errors.push({
+                    line: astLine,
+                    message: e.message
+                });
             }
             try {
                 campaign.hours = this._parseTimes(match[2]);
             }
             catch (e) {
-                campaign.errors.push(e);
+                this.errors.push({
+                    line: astLine,
+                    message: e.message
+                });
             }
             return this;
         }
@@ -127,19 +139,21 @@ Erv.prototype = {
             return this;
         }
 
-        campaign.errors.push(new Error(str + ' is not a valid campaign trigger.'));
+        this.errors.push({
+            line: astLine,
+            message: str + ' is not a valid campaign trigger.'
+        });
         return this;
     },
 
     _setCampaignStepsFromAstLines: function (astLines) {
+        console.log('parsing', astLines.length, 'steps');
         this.campaign.steps = astLines.map(this._stepFromAstLine.bind(this));
         return this;
     },
 
     _stepFromAstLine: function (astLine) {
-        var campaignStep = {
-            errors: []
-        };
+        var campaignStep = {};
 
         var match = astLine.stripped.match(/^send the (.*?) email$/);
         if (match) {
@@ -176,14 +190,20 @@ Erv.prototype = {
                     multiplier = 60 * 24;
                     break;
                 default :
-                    campaignStep.errors.push(new Error(unit + ' is not a valid wait unit.'));
+                    this.errors.push({
+                        line: astLine,
+                        message: unit + ' is not a valid wait unit.'
+                    });
                     return campaignStep;
 
             }
 
             var n = parseInt(match[1], 10);
             if (isNaN(n)) {
-                campaignStep.errors.push(new Error(n + ' is not a valid wait amount.'));
+                this.errors.push({
+                    line: astLine,
+                    message: n + ' is not a valid wait amount.'
+                });
                 return campaignStep;
             }
 
@@ -191,6 +211,10 @@ Erv.prototype = {
             return campaignStep;
         }
 
+        this.errors.push({
+            line: astLine,
+            message: astLine.stripped + ' is not a valid campaign step.'
+        });
         return campaignStep;
     },
 
@@ -202,7 +226,10 @@ Erv.prototype = {
 
         // if no key then this is a syntax error
         if (!key) {
-            this.errors.push(new Error(astLine.stripped + ' is not a valid custom field'));
+            this.errors.push({
+                line: astLine,
+                message:astLine.stripped + ' is not a valid custom field'
+            });
             return {
                 key: '',
                 value: ''
@@ -296,22 +323,20 @@ Erv.prototype = {
 
 Erv.fromString = function (str) {
     var erv = new Erv();
-    var ast = erv._programStringToAst(str);
-    erv._setCampaignFromAstLine(ast[0]);
-    erv._setCampaignStepsFromAstLines(ast.slice(1));
+    erv.setProgramString(str);
     return erv;
 };
 
 function onEditorContentChange(codeMirror) {
 
-    var source = '';
+    var source = [];
     codeMirror.eachLine(function (line) {
-        source += '\n' + line.text;
+        source.push(line.text);
     });
-    source = source.replace(/\t/g, '    ');
+    source = source.join('\n').replace(/\t/g, '    ');
 
     var erv = Erv.fromString(source);
-    document.getElementById('parsed').innerHTML = JSON.stringify(erv.campaign, null, '  ');
+    document.getElementById('parsed').innerHTML = JSON.stringify(erv, null, '  ');
 }
 
 var editorContainer = document.getElementById('editor-container');
