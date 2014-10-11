@@ -65,8 +65,10 @@ Erv.prototype = {
 
     _astLineFromString: function (str, lineNo) {
 
+        // replace tabs with 4 spaces
         str = str.replace(/\t/g, '    ');
 
+        // calculate the indent
         for (var i = 0, count = 0; i < str.length; i++) {
             if (str[i] !== ' ') {
                 break;
@@ -148,7 +150,6 @@ Erv.prototype = {
     },
 
     _setCampaignStepsFromAstLines: function (astLines) {
-        console.log('parsing', astLines.length, 'steps');
         this.campaign.steps = astLines.map(this._stepFromAstLine.bind(this));
         return this;
     },
@@ -327,26 +328,3 @@ Erv.fromString = function (str) {
     erv.setProgramString(str);
     return erv;
 };
-
-function onEditorContentChange(codeMirror) {
-
-    var source = [];
-    codeMirror.eachLine(function (line) {
-        source.push(line.text);
-    });
-    source = source.join('\n').replace(/\t/g, '    ');
-
-    var erv = Erv.fromString(source);
-    document.getElementById('parsed').innerHTML = JSON.stringify(erv, null, '  ');
-}
-
-var editorContainer = document.getElementById('editor-container');
-
-var cm = new CodeMirror(editorContainer, {
-    mode: 'erv',
-    tabSize: 4,
-    indentWithTabs: false,
-    indentUnit: 4
-});
-
-cm.on('change', onEditorContentChange);
