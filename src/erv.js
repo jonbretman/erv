@@ -90,7 +90,7 @@ Erv.prototype = {
             steps: []
         };
 
-        if (!astLine) {
+        if (!astLine || !astLine.source) {
             this.errors.push({
                 line: astLine,
                 message: 'A campaign must start with a valid trigger eg. "when", "on", or "at"'
@@ -99,14 +99,6 @@ Erv.prototype = {
         }
 
         var str = astLine.source;
-
-        if (!str) {
-            this.errors.push({
-                line: astLine,
-                message: str + ' is not a valid campaign trigger.'
-            });
-            return this;
-        }
 
         var match = str.match(/^when a user (.*?)$/i);
         if (match) {
@@ -148,7 +140,7 @@ Erv.prototype = {
 
         this.errors.push({
             line: astLine,
-            message: str + ' is not a valid campaign trigger.'
+            message: this._quote(str) + ' is not a valid campaign trigger.'
         });
         return this;
     },
@@ -161,7 +153,7 @@ Erv.prototype = {
     _stepFromAstLine: function (astLine) {
         var campaignStep = {};
 
-        var match = astLine.source.match(/^send the (.*?) email$/);
+        var match = astLine.source.match(/^send the (.*?) email$/i);
         if (match) {
             campaignStep.type = 'email';
             campaignStep.emailTemplate = match[1].toLowerCase().replace(/ /g, '_');
@@ -169,7 +161,7 @@ Erv.prototype = {
             return campaignStep;
         }
 
-        match = astLine.source.match(/^if (.*?)$/);
+        match = astLine.source.match(/^if (.*?)$/i);
         if (match) {
             campaignStep.type = 'condition';
             campaignStep.conditionFunction  = match[1].toLowerCase().replace(/ /g, '_');
@@ -198,7 +190,7 @@ Erv.prototype = {
                 default :
                     this.errors.push({
                         line: astLine,
-                        message: unit + ' is not a valid wait unit.'
+                        message: this._quote(unit) + ' is not a valid wait unit.'
                     });
                     return campaignStep;
 
@@ -208,7 +200,7 @@ Erv.prototype = {
             if (isNaN(n)) {
                 this.errors.push({
                     line: astLine,
-                    message: n + ' is not a valid wait amount.'
+                    message: this._quote(match[1]) + ' is not a valid wait amount.'
                 });
                 return campaignStep;
             }
@@ -219,7 +211,7 @@ Erv.prototype = {
 
         this.errors.push({
             line: astLine,
-            message: astLine.source + ' is not a valid campaign step.'
+            message: this._quote(astLine.source) + ' is not a valid campaign step.'
         });
         return campaignStep;
     },
@@ -230,11 +222,11 @@ Erv.prototype = {
         var value = astLine.source.substring(delimiter + 1).trim();
         var lastLineNo = astLine.lineNo;
 
-        // if no key then this is a syntax error
-        if (!key) {
+        // if no delimiter or key then this is a syntax error
+        if (delimiter < 1 || !key) {
             this.errors.push({
                 line: astLine,
-                message:astLine.source + ' is not a valid custom field'
+                message: this._quote(astLine.source) + ' is not a valid custom field.'
             });
             return {
                 key: '',
@@ -275,10 +267,11 @@ Erv.prototype = {
             'saturday': 6,
             'sunday': 7
         };
+        var quote = this._quote;
 
         return arr.map(function (day) {
             if (!map[day.toLowerCase()]) {
-                throw new Error(day + ' is not a valid weekday.');
+                throw new Error(quote(day) + ' is not a valid weekday.');
             }
             return map[day.toLowerCase()];
         });
@@ -290,7 +283,7 @@ Erv.prototype = {
     },
 
     _parseTime: function(str) {
-        var errorMessage = str + ' is not a valid time.';
+        var errorMessage = this._quote(str) + ' is not a valid time.';
         var match = str.match(/^([\d\.]+)(pm|am)$/i);
 
         if (!match) {
@@ -320,9 +313,13 @@ Erv.prototype = {
     },
 
     _commaSentenceToArray: function(str) {
-        return str.split(/,| and /).map(function (s) {
+        return str.split(/,| and /i).map(function (s) {
             return s.trim();
         });
+    },
+
+    _quote: function (str) {
+        return '"' + str + '"';
     }
 
 };
