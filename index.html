@@ -6,7 +6,7 @@
         padding: 0;
         margin: 0;
         height: 100%;
-        font-size: 18px;
+        font-size: 14px;
     }
 
     * {
@@ -26,11 +26,15 @@
         overflow: scroll;
     }
 
-    .CodeMirror, .container code {
+    .CodeMirror, #parsed {
         height: 100%;
         border: 1px solid #efefef;
         display: block;
         width: 100%;
+    }
+
+    #parsed {
+        overflow: scroll;
     }
 
     .CodeMirror-code {

@@ -89,7 +89,7 @@ CodeMirror.defineMode("erv", function () {
             return ret(TOKEN_KEYWORD);
         }
 
-        if (stream.sol() && stream.match(/^every/i)) {
+        if (stream.sol() && stream.match(/^every|on/i)) {
             state.lastKeyword = TIME_TRIGGER_STATEMENT;
             state.acceptStringUntil = TIME_TRIGGER_OPERATOR;
             return ret(TOKEN_KEYWORD);

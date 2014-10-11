@@ -28,7 +28,7 @@ Erv.prototype = {
 
             line = this._astLineFromString(lines[i], i + 1);
 
-            if (!line.stripped) {
+            if (!line.source) {
                 continue;
             }
 
@@ -64,34 +64,35 @@ Erv.prototype = {
     },
 
     _astLineFromString: function (str, lineNo) {
-        var astLine = {};
-        astLine.source = str.replace(/\t/g, '    ');
-        astLine.lineNo = lineNo;
-        astLine.stripped = str.trim();
-        astLine.children = [];
 
-        for (var i = 0, count = 0; i < astLine.source.length; i++) {
+        str = str.replace(/\t/g, '    ');
 
-            if (astLine.source[i] === ' ') {
-                count++;
-            }
-
-            else {
+        for (var i = 0, count = 0; i < str.length; i++) {
+            if (str[i] !== ' ') {
                 break;
             }
-
+            count++;
         }
 
-        astLine.indent = Math.floor(count / 4);
-        return astLine;
+        return {
+            lineNo: lineNo,
+            source: str.trim(),
+            children: [],
+            indent: Math.floor(count / 4)
+        };
     },
 
     _setCampaignFromAstLine: function (astLine) {
 
-        var str = astLine.stripped;
         var campaign = this.campaign = {
             steps: []
         };
+
+        if (!astLine) {
+            return this;
+        }
+
+        var str = astLine.source;
 
         if (!str) {
             this.errors.push({
@@ -155,7 +156,7 @@ Erv.prototype = {
     _stepFromAstLine: function (astLine) {
         var campaignStep = {};
 
-        var match = astLine.stripped.match(/^send the (.*?) email$/);
+        var match = astLine.source.match(/^send the (.*?) email$/);
         if (match) {
             campaignStep.type = 'email';
             campaignStep.emailTemplate = match[1].toLowerCase().replace(/ /g, '_');
@@ -163,14 +164,14 @@ Erv.prototype = {
             return campaignStep;
         }
 
-        match = astLine.stripped.match(/^if (.*?)$/);
+        match = astLine.source.match(/^if (.*?)$/);
         if (match) {
             campaignStep.type = 'condition';
             campaignStep.conditionFunction  = match[1].toLowerCase().replace(/ /g, '_');
             return campaignStep;
         }
 
-        match = astLine.stripped.match(/^wait for (.*?) (.*?)$/i);
+        match = astLine.source.match(/^wait for (.*?) (.*?)$/i);
         if (match) {
             campaignStep.type = 'wait';
             var unit = match[2].toLowerCase();
@@ -213,22 +214,22 @@ Erv.prototype = {
 
         this.errors.push({
             line: astLine,
-            message: astLine.stripped + ' is not a valid campaign step.'
+            message: astLine.source + ' is not a valid campaign step.'
         });
         return campaignStep;
     },
 
     _parseEmailTemplateParamAst: function (astLine) {
-        var delimiter = astLine.stripped.indexOf(':');
-        var key = astLine.stripped.substring(0, delimiter);
-        var value = astLine.stripped.substring(delimiter + 1).trim();
+        var delimiter = astLine.source.indexOf(':');
+        var key = astLine.source.substring(0, delimiter);
+        var value = astLine.source.substring(delimiter + 1).trim();
         var lastLineNo = astLine.lineNo;
 
         // if no key then this is a syntax error
         if (!key) {
             this.errors.push({
                 line: astLine,
-                message:astLine.stripped + ' is not a valid custom field'
+                message:astLine.source + ' is not a valid custom field'
             });
             return {
                 key: '',
@@ -239,7 +240,7 @@ Erv.prototype = {
         // join together any child lines text treating empty lines like paragraph breaks
         value += astLine.children.map(function (child) {
 
-            var ret = child.stripped;
+            var ret = child.source;
 
             if (child.lineNo > lastLineNo + 1) {
                 ret = '\n' + ret;
