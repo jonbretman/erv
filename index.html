@@ -1,12 +1,13 @@
 <!doctype html>
 <html>
 <link href="lib/codemirror.css" rel="stylesheet">
+<link href="lib/show-hint.css" rel="stylesheet">
 <style>
     body, html {
         padding: 0;
         margin: 0;
         height: 100%;
-        font-size: 14px;
+        font-size: 18px;
     }
 
     * {
@@ -37,9 +38,32 @@
         overflow: scroll;
     }
 
-    .CodeMirror-code {
+    .CodeMirror-code,
+    .CodeMirror-hints {
         line-height: 1.5em;
-        font-weight: bold;
+        font-family: Avenir, sans-serif;
+    }
+
+    .CodeMirror-hints {
+        padding: 8px;
+        border: 1px solid #efefef;
+        background: white;
+        max-height: 20em;
+        overflow-y: auto;
+        font-size: 1em;
+    }
+
+    .CodeMirror-hint {
+        margin: 0;
+        padding: 0 4px;
+        border-radius: 2px;
+        max-width: inherit;
+        color: #212121;
+    }
+
+    li.CodeMirror-hint-active {
+        background: #08f;
+        color: white;
     }
 
     /* Error markers gutter */
@@ -51,8 +75,8 @@
         width: 8px;
         height: 8px;
         position: absolute;
-        top: 5px;
-        left: 3px;
+        top: 8px;
+        left: 4px;
         background-color: red;
         border-radius: 100%;
     }
@@ -87,6 +111,7 @@
 </pre>
 
 <script src="lib/codemirror.js"></script>
+<script src="lib/show-hint.js"></script>
 <script src="src/mode/erv.js"></script>
 <script src="src/erv.js"></script>
 <script src="src/app.js"></script>

@@ -16,10 +16,8 @@ CodeMirror.defineMode("erv", function () {
 
     var END_OF_LINE = 'EOL';
 
-    var lastToken = null;
-
-    function ret(token) {
-        lastToken = token;
+    function ret(state, token) {
+        state.lastToken = token;
         return token;
     }
 
@@ -29,7 +27,7 @@ CodeMirror.defineMode("erv", function () {
 
         // clear last token at the start of each line
         if (stream.sol()) {
-            lastToken = null;
+            state.lastToken = null;
         }
 
         // ignore whitespace
@@ -41,11 +39,11 @@ CodeMirror.defineMode("erv", function () {
         // support for multi-line custom field values
         if (state.lastKeyword === CUSTOM_FIELD_KEY) {
 
-            if (lastToken === TOKEN_CUSTOM_FIELD_KEY && ch === ':') {
+            if (state.lastToken === TOKEN_CUSTOM_FIELD_KEY && ch === ':') {
                 stream.next();
                 return null;
             }
-            else if (lastToken || stream.indentation() > state.customFieldIndent) {
+            else if (state.lastToken || stream.indentation() > state.customFieldIndent) {
                 stream.skipToEnd();
                 return TOKEN_CUSTOM_FIELD_VALUE;
             }
@@ -61,62 +59,62 @@ CodeMirror.defineMode("erv", function () {
                 case SEND_STATEMENT_SUFFIX:
                     if (stream.match(/^email/) && (stream.eol() || stream.eatSpace() && stream.eol())) {
                         state.acceptStringUntil = null;
-                        return ret(TOKEN_KEYWORD);
+                        return ret(state, TOKEN_KEYWORD);
                     }
                     break;
 
                 case TIME_TRIGGER_OPERATOR:
                     if (stream.match(/^at/) && stream.peek() === ' ') {
                         state.acceptStringUntil = END_OF_LINE;
-                        return ret(TOKEN_KEYWORD);
+                        return ret(state, TOKEN_KEYWORD);
                     }
                     break;
 
                 case END_OF_LINE:
                     stream.skipToEnd();
                     state.acceptStringUntil = null;
-                    return ret(TOKEN_STRING);
+                    return ret(state, TOKEN_STRING);
 
             }
 
             stream.next();
-            return ret(TOKEN_STRING);
+            return ret(state, TOKEN_STRING);
         }
 
         if (stream.sol() && stream.match(/^send the/i)) {
             state.lastKeyword = SEND_STATEMENT_PREFIX;
             state.acceptStringUntil = SEND_STATEMENT_SUFFIX;
-            return ret(TOKEN_KEYWORD);
+            return ret(state, TOKEN_KEYWORD);
         }
 
         if (stream.sol() && stream.match(/^every|on/i)) {
             state.lastKeyword = TIME_TRIGGER_STATEMENT;
             state.acceptStringUntil = TIME_TRIGGER_OPERATOR;
-            return ret(TOKEN_KEYWORD);
+            return ret(state, TOKEN_KEYWORD);
         }
 
         if (stream.sol() && stream.match(/^wait for/i)) {
             state.lastKeyword = WAIT_STATEMENT;
             state.acceptStringUntil = END_OF_LINE;
-            return ret(TOKEN_KEYWORD);
+            return ret(state, TOKEN_KEYWORD);
         }
 
         if (stream.sol() && stream.match(/^if/i)) {
             state.lastKeyword = CONDITION_STATEMENT;
             state.acceptStringUntil = END_OF_LINE;
-            return ret(TOKEN_KEYWORD);
+            return ret(state, TOKEN_KEYWORD);
         }
 
         if (stream.sol() && stream.match(/^when a user/i)) {
             state.lastKeyword = EVENT_TRIGGER_STATEMENT;
             state.acceptStringUntil = END_OF_LINE;
-            return ret(TOKEN_KEYWORD);
+            return ret(state, TOKEN_KEYWORD);
         }
 
         if (stream.indentation() > 0 && stream.match(/^[^:]*/)) {
             state.lastKeyword = CUSTOM_FIELD_KEY;
             state.customFieldIndent = stream.indentation();
-            return ret(TOKEN_CUSTOM_FIELD_KEY);
+            return ret(state, TOKEN_CUSTOM_FIELD_KEY);
         }
 
         stream.next();
