@@ -81,8 +81,8 @@ describe('Erv.fromString', function () {
     it('should be an error to not define a valid campaign trigger', function () {
         var erv = Erv.fromString('send the foobar email');
         expect(erv.errors).to.have.length(1);
-        expect(erv.errors[0].message).to.equal('"send the foobar email" is not a valid campaign trigger.');
-        expect(erv.errors[0].line.lineNo).to.equal(1);
+        expect(erv.errors[0].message).to.equal('A campaign must start with a valid trigger eg. "when", "on", or "at".');
+        expect(erv.errors[0].line.lineNo).to.equal(0);
     });
 
     it('should be an error to indent the first line', function () {
@@ -193,7 +193,7 @@ describe('Erv.fromString', function () {
         var errors = Erv.fromString(programString).errors;
         expect(errors).to.have.length(1);
         expect(errors[0].message).to.equal('"make a nice cup of tea" is not a valid campaign step.');
-        expect(errors[0].line.lineNo).to.equal(2);
+        expect(errors[0].line.lineNo).to.equal(1);
     });
 
 });

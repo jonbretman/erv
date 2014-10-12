@@ -59,7 +59,7 @@ CodeMirror.defineMode("erv", function () {
             switch (state.acceptStringUntil) {
 
                 case SEND_STATEMENT_SUFFIX:
-                    if (stream.match(/^email/) && stream.eol()) {
+                    if (stream.match(/^email/) && (stream.eol() || stream.eatSpace() && stream.eol())) {
                         state.acceptStringUntil = null;
                         return ret(TOKEN_KEYWORD);
                     }

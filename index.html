@@ -42,6 +42,38 @@
         font-weight: bold;
     }
 
+    /* Error markers gutter */
+    .error-markers {
+        width: 14px;
+    }
+
+    .error-marker {
+        width: 8px;
+        height: 8px;
+        position: absolute;
+        top: 5px;
+        left: 3px;
+        background-color: red;
+        border-radius: 100%;
+    }
+
+    .error-marker-text {
+        display: none;
+        padding: 5px 15px;
+        border: 1px solid #efefef;
+        background-color: white;
+        position: absolute;
+        top: 20px;
+        left: 0;
+        z-index: 9999;
+        white-space: nowrap;
+        box-shadow: 1px 1px 3px rgba(0, 0, 0, 0.1);
+    }
+
+    .error-marker:hover .error-marker-text {
+        display: block;
+    }
+
 </style>
 <head>
 

@@ -17,7 +17,7 @@
     function parseWeekdays(str) {
 
         var arr = commaSentenceToArray(str);
-        var map = {
+        var days = {
             'monday': 1,
             'tuesday': 2,
             'wednesday': 3,
@@ -28,10 +28,10 @@
         };
 
         return arr.map(function (day) {
-            if (!map[day.toLowerCase()]) {
+            if (!days[day.toLowerCase()]) {
                 throw new Error(quote(day) + ' is not a valid day.');
             }
-            return map[day.toLowerCase()];
+            return days[day.toLowerCase()];
         });
     }
 
@@ -109,6 +109,15 @@
     }
 
     /**
+     * Returns the last element of the passed array.
+     * @param {Array} arr
+     * @returns {*}
+     */
+    function last(arr) {
+        return arr[arr.length - 1];
+    }
+
+    /**
      * Class that represents an erv program.
      * @param {Object} [campaign] An existing campaign object.
      * @constructor
@@ -132,28 +141,20 @@
             this.programString = str;
             this.ast = [];
 
-            var ast = this.ast;
             var lines = str.split('\n');
-            var line;
-            var context = [ast];
+            var context = [this.ast];
             var lastIndent = 0;
-            var i = 0;
-            var j = 0;
 
-            function last(arr) {
-                return arr[arr.length - 1];
-            }
+            for (var i = 0; i < lines.length; i++) {
 
-            for (; i < lines.length; i++) {
-
-                line = this._astLineFromString(lines[i], i + 1);
+                var line = this._astLineFromString(lines[i], i);
 
                 if (!line.source) {
                     continue;
                 }
 
                 if (line.indent < lastIndent) {
-                    for (j = 0; j < lastIndent - line.indent; j++) {
+                    for (var j = 0; j < lastIndent - line.indent; j++) {
                         context.pop();
                     }
                 }
@@ -166,7 +167,7 @@
                             line: line,
                             message: 'Indentation is not allowed here.'
                         });
-                        ast.push(line);
+                        this.ast.push(line);
                         break;
                     }
 
@@ -177,9 +178,12 @@
                 lastIndent = line.indent;
             }
 
+            if (!this.ast.length) {
+                this.ast.push(this._astLineFromString('', 0));
+            }
 
-            this._setCampaignFromAstLine(ast[0]);
-            this._setCampaignStepsFromAstLines(ast.slice(1));
+            this._setCampaignFromAstLine(this.ast[0]);
+            this._setCampaignStepsFromAstLines(this.ast.slice(1));
             return this;
         },
 
@@ -228,7 +232,7 @@
             if (!astLine || !astLine.source) {
                 this.errors.push({
                     line: astLine,
-                    message: 'A campaign must start with a valid trigger eg. "when", "on", or "at"'
+                    message: 'A campaign must start with a valid trigger eg. "when", "on", or "at".'
                 });
                 return this;
             }
@@ -275,7 +279,7 @@
 
             this.errors.push({
                 line: astLine,
-                message: quote(str) + ' is not a valid campaign trigger.'
+                message: 'A campaign must start with a valid trigger eg. "when", "on", or "at".'
             });
             return this;
         },
