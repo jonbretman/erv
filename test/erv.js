@@ -58,7 +58,7 @@ describe('Erv.fromString', function () {
 
     it('should be an error if either the days or times are not valid', function () {
         var erv = Erv.fromString('every kitten at 5pm');
-        expect(erv.errors[0].message).to.equal('"kitten" is not a valid weekday.');
+        expect(erv.errors[0].message).to.equal('"kitten" is not a valid day.');
 
         var invalidTimes = ['teapot', '13pm', '700am', '4', '5.4.20pm', '7.30kitten'];
         invalidTimes.forEach(function (time) {

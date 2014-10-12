@@ -1,263 +1,22 @@
-function Erv(campaign) {
-    this.campaign = campaign || null;
-    this.ast = [];
-    this.programString = '';
-    this.errors = [];
-}
+(function (root, factory) {
 
-Erv.prototype = {
+    if (typeof define === 'function' && define.amd) {
+        define(factory);
+    } else {
+        root.Erv = factory();
+    }
 
-    setProgramString: function (str) {
+}(this, function () {
 
-        this.programString = str;
-        this.ast = [];
+    /**
+     * Takes a string of weekdays and returns an array of numbers representing those days.
+     * Will throw an error if an invalid day is found.
+     * @param {string} str
+     * @returns {number[]}
+     */
+    function parseWeekdays(str) {
 
-        var ast = this.ast;
-        var lines = str.split('\n');
-        var line;
-        var context = [ast];
-        var lastIndent = 0;
-        var i = 0;
-        var j = 0;
-
-        function last(arr) {
-            return arr[arr.length - 1];
-        }
-
-        for (; i < lines.length; i++) {
-
-            line = this._astLineFromString(lines[i], i + 1);
-
-            if (!line.source) {
-                continue;
-            }
-
-            if (line.indent < lastIndent) {
-                for (j = 0; j < lastIndent - line.indent; j++) {
-                    context.pop();
-                }
-            }
-
-            if (line.indent > lastIndent) {
-                var parentContext = last(last(context));
-
-                if (!parentContext) {
-                    this.errors.push({
-                        line: line,
-                        message: 'Indentation is not allowed here.'
-                    });
-                    ast.push(line);
-                    break;
-                }
-
-                context.push(parentContext.children);
-            }
-
-            last(context).push(line);
-            lastIndent = line.indent;
-        }
-
-
-        this._setCampaignFromAstLine(ast[0]);
-        this._setCampaignStepsFromAstLines(ast.slice(1));
-        return this;
-    },
-
-    _astLineFromString: function (str, lineNo) {
-
-        // replace tabs with 4 spaces
-        str = str.replace(/\t/g, '    ');
-
-        // calculate the indent
-        for (var i = 0, count = 0; i < str.length; i++) {
-            if (str[i] !== ' ') {
-                break;
-            }
-            count++;
-        }
-
-        return {
-            lineNo: lineNo,
-            source: str.trim(),
-            children: [],
-            indent: Math.floor(count / 4)
-        };
-    },
-
-    _setCampaignFromAstLine: function (astLine) {
-
-        var campaign = this.campaign = {
-            steps: []
-        };
-
-        if (!astLine || !astLine.source) {
-            this.errors.push({
-                line: astLine,
-                message: 'A campaign must start with a valid trigger eg. "when", "on", or "at"'
-            });
-            return this;
-        }
-
-        var str = astLine.source;
-
-        var match = str.match(/^when a user (.*?)$/i);
-        if (match) {
-            campaign.eventType = match[1];
-            campaign.type = 'E';
-            return this;
-        }
-
-        match = str.match(/^every (.*?) at (.*?)$/i);
-        if (match) {
-            campaign.type = 'P';
-            try {
-                campaign.weekdays = this._parseWeekdays(match[1]);
-            }
-            catch (e) {
-                this.errors.push({
-                    line: astLine,
-                    message: e.message
-                });
-            }
-            try {
-                campaign.hours = this._parseTimes(match[2]);
-            }
-            catch (e) {
-                this.errors.push({
-                    line: astLine,
-                    message: e.message
-                });
-            }
-            return this;
-        }
-
-        match = str.match(/on ([\d\/]+) at (.*?)$/i);
-        if (match) {
-            campaign.type = 'O';
-            campaign.localDatetime = match[1] + ' ' + match[2];
-            return this;
-        }
-
-        this.errors.push({
-            line: astLine,
-            message: this._quote(str) + ' is not a valid campaign trigger.'
-        });
-        return this;
-    },
-
-    _setCampaignStepsFromAstLines: function (astLines) {
-        this.campaign.steps = astLines.map(this._stepFromAstLine.bind(this));
-        return this;
-    },
-
-    _stepFromAstLine: function (astLine) {
-        var campaignStep = {};
-
-        var match = astLine.source.match(/^send the (.*?) email$/i);
-        if (match) {
-            campaignStep.type = 'email';
-            campaignStep.emailTemplate = match[1].toLowerCase().replace(/ /g, '_');
-            campaignStep.emailTemplateParams = astLine.children.map(this._parseEmailTemplateParamAst.bind(this));
-            return campaignStep;
-        }
-
-        match = astLine.source.match(/^if (.*?)$/i);
-        if (match) {
-            campaignStep.type = 'condition';
-            campaignStep.conditionFunction  = match[1].toLowerCase().replace(/ /g, '_');
-            return campaignStep;
-        }
-
-        match = astLine.source.match(/^wait for (.*?) (.*?)$/i);
-        if (match) {
-            campaignStep.type = 'wait';
-            var unit = match[2].toLowerCase();
-            var multiplier;
-            switch (unit) {
-                case 'mins':
-                case 'minute':
-                case 'minutes':
-                    multiplier = 1;
-                    break;
-                case 'hour':
-                case 'hours':
-                    multiplier = 60;
-                    break;
-                case 'day':
-                case 'days':
-                    multiplier = 60 * 24;
-                    break;
-                default :
-                    this.errors.push({
-                        line: astLine,
-                        message: this._quote(unit) + ' is not a valid wait unit.'
-                    });
-                    return campaignStep;
-
-            }
-
-            var n = parseInt(match[1], 10);
-            if (isNaN(n)) {
-                this.errors.push({
-                    line: astLine,
-                    message: this._quote(match[1]) + ' is not a valid wait amount.'
-                });
-                return campaignStep;
-            }
-
-            campaignStep.waitMinutes = n * multiplier;
-            return campaignStep;
-        }
-
-        this.errors.push({
-            line: astLine,
-            message: this._quote(astLine.source) + ' is not a valid campaign step.'
-        });
-        return campaignStep;
-    },
-
-    _parseEmailTemplateParamAst: function (astLine) {
-        var delimiter = astLine.source.indexOf(':');
-        var key = astLine.source.substring(0, delimiter);
-        var value = astLine.source.substring(delimiter + 1).trim();
-        var lastLineNo = astLine.lineNo;
-
-        // if no delimiter or key then this is a syntax error
-        if (delimiter < 1 || !key) {
-            this.errors.push({
-                line: astLine,
-                message: this._quote(astLine.source) + ' is not a valid custom field.'
-            });
-            return {
-                key: '',
-                value: ''
-            };
-        }
-
-        // join together any child lines text treating empty lines like paragraph breaks
-        value += astLine.children.map(function (child) {
-
-            var ret = child.source;
-
-            if (child.lineNo > lastLineNo + 1) {
-                ret = '\n' + ret;
-            }
-
-            lastLineNo = child.lineNo;
-            return ret;
-
-        }).join(' ');
-
-        // return a custom field object
-        return {
-            key: key,
-            value: value
-        };
-    },
-
-    _parseWeekdays: function (str) {
-
-        var arr = this._commaSentenceToArray(str);
+        var arr = commaSentenceToArray(str);
         var map = {
             'monday': 1,
             'tuesday': 2,
@@ -267,23 +26,36 @@ Erv.prototype = {
             'saturday': 6,
             'sunday': 7
         };
-        var quote = this._quote;
 
         return arr.map(function (day) {
             if (!map[day.toLowerCase()]) {
-                throw new Error(quote(day) + ' is not a valid weekday.');
+                throw new Error(quote(day) + ' is not a valid day.');
             }
             return map[day.toLowerCase()];
         });
-    },
+    }
 
-    _parseTimes: function(str) {
-        var arr = this._commaSentenceToArray(str);
-        return arr.map(this._parseTime.bind(this));
-    },
+    /**
+     * Takes a string of times and returns an array of number representing those times.
+     * Will throw an error if an invalid time is found.
+     * @param {string} str
+     * @returns {number[]}
+     */
+    function parseTimes(str) {
+        var arr = commaSentenceToArray(str);
+        return arr.map(parseTime);
+    }
 
-    _parseTime: function(str) {
-        var errorMessage = this._quote(str) + ' is not a valid time.';
+    /**
+     * Parses a string in the format '9am' or '3.30pm' and return a number representing that time.
+     * Some examples:
+     *     '9am'    -> 900
+     *     '1.30pm' -> 1330
+     * @param {string} str
+     * @returns {number}
+     */
+    function parseTime(str) {
+        var errorMessage = quote(str) + ' is not a valid time.';
         var match = str.match(/^([\d\.]+)(pm|am)$/i);
 
         if (!match) {
@@ -310,22 +82,348 @@ Erv.prototype = {
         }
 
         return (hours * 100) + minutes;
-    },
+    }
 
-    _commaSentenceToArray: function(str) {
+    /**
+     * Takes comma separated list of words and return an array of strings.
+     * Some examples:
+     *     'one'                 -> ['one']
+     *     'one and two'         -> ['one', 'two']
+     *     'one, two, and three' -> ['one', 'two', 'three']
+     * @param str
+     * @returns {string[]}
+     */
+    function commaSentenceToArray(str) {
         return str.split(/,| and /i).map(function (s) {
             return s.trim();
         });
-    },
+    }
 
-    _quote: function (str) {
+    /**
+     * Takes a string and returns it wrapped in double quotes.
+     * @param {string} str
+     * @returns {string}
+     */
+    function quote(str) {
         return '"' + str + '"';
     }
 
-};
+    /**
+     * Class that represents an erv program.
+     * @param {Object} [campaign] An existing campaign object.
+     * @constructor
+     */
+    function Erv(campaign) {
+        this.campaign = campaign || null;
+        this.ast = [];
+        this.programString = '';
+        this.errors = [];
+    }
 
-Erv.fromString = function (str) {
-    var erv = new Erv();
-    erv.setProgramString(str);
-    return erv;
-};
+    Erv.prototype = {
+
+        /**
+         * Updates this instance with a new program string.
+         * @param {string} str An Erv program string
+         * @returns {Erv}
+         */
+        setProgramString: function (str) {
+
+            this.programString = str;
+            this.ast = [];
+
+            var ast = this.ast;
+            var lines = str.split('\n');
+            var line;
+            var context = [ast];
+            var lastIndent = 0;
+            var i = 0;
+            var j = 0;
+
+            function last(arr) {
+                return arr[arr.length - 1];
+            }
+
+            for (; i < lines.length; i++) {
+
+                line = this._astLineFromString(lines[i], i + 1);
+
+                if (!line.source) {
+                    continue;
+                }
+
+                if (line.indent < lastIndent) {
+                    for (j = 0; j < lastIndent - line.indent; j++) {
+                        context.pop();
+                    }
+                }
+
+                if (line.indent > lastIndent) {
+                    var parentContext = last(last(context));
+
+                    if (!parentContext) {
+                        this.errors.push({
+                            line: line,
+                            message: 'Indentation is not allowed here.'
+                        });
+                        ast.push(line);
+                        break;
+                    }
+
+                    context.push(parentContext.children);
+                }
+
+                last(context).push(line);
+                lastIndent = line.indent;
+            }
+
+
+            this._setCampaignFromAstLine(ast[0]);
+            this._setCampaignStepsFromAstLines(ast.slice(1));
+            return this;
+        },
+
+        /**
+         * Takes a single line of an erv program and the line
+         * number and return an object representing that line.
+         * @param {string} str
+         * @param {number} lineNo
+         * @returns {{lineNo: {number}, source: {string}, children: Array, indent: number}}
+         * @private
+         */
+        _astLineFromString: function (str, lineNo) {
+
+            // replace tabs with 4 spaces
+            str = str.replace(/\t/g, '    ');
+
+            // calculate the indent
+            for (var i = 0, count = 0; i < str.length; i++) {
+                if (str[i] !== ' ') {
+                    break;
+                }
+                count++;
+            }
+
+            return {
+                lineNo: lineNo,
+                source: str.trim(),
+                children: [],
+                indent: Math.floor(count / 4)
+            };
+        },
+
+        /**
+         * Updates the campaign using an astLine object.
+         * Will record any found errors.
+         * @param {object} astLine
+         * @returns {Erv}
+         * @private
+         */
+        _setCampaignFromAstLine: function (astLine) {
+
+            var campaign = this.campaign = {
+                steps: []
+            };
+
+            if (!astLine || !astLine.source) {
+                this.errors.push({
+                    line: astLine,
+                    message: 'A campaign must start with a valid trigger eg. "when", "on", or "at"'
+                });
+                return this;
+            }
+
+            var str = astLine.source;
+
+            var match = str.match(/^when a user (.*?)$/i);
+            if (match) {
+                campaign.eventType = match[1];
+                campaign.type = 'E';
+                return this;
+            }
+
+            match = str.match(/^every (.*?) at (.*?)$/i);
+            if (match) {
+                campaign.type = 'P';
+                try {
+                    campaign.weekdays = parseWeekdays(match[1]);
+                }
+                catch (e) {
+                    this.errors.push({
+                        line: astLine,
+                        message: e.message
+                    });
+                }
+                try {
+                    campaign.hours = parseTimes(match[2]);
+                }
+                catch (e) {
+                    this.errors.push({
+                        line: astLine,
+                        message: e.message
+                    });
+                }
+                return this;
+            }
+
+            match = str.match(/on ([\d\/]+) at (.*?)$/i);
+            if (match) {
+                campaign.type = 'O';
+                campaign.localDatetime = match[1] + ' ' + match[2];
+                return this;
+            }
+
+            this.errors.push({
+                line: astLine,
+                message: quote(str) + ' is not a valid campaign trigger.'
+            });
+            return this;
+        },
+
+        /**
+         * Updates the campaign steps using an array of astLine objects.
+         * @param {object} astLines
+         * @returns {Erv}
+         * @private
+         */
+        _setCampaignStepsFromAstLines: function (astLines) {
+            this.campaign.steps = astLines.map(this._stepFromAstLine.bind(this));
+            return this;
+        },
+
+        /**
+         * Takes an astLine object and returns an object representing a campaign step.
+         * Will record any found errors.
+         * @param {object} astLine
+         * @returns {object}
+         * @private
+         */
+        _stepFromAstLine: function (astLine) {
+            var campaignStep = {};
+
+            var match = astLine.source.match(/^send the (.*?) email$/i);
+            if (match) {
+                campaignStep.type = 'email';
+                campaignStep.emailTemplate = match[1].toLowerCase().replace(/ /g, '_');
+                campaignStep.emailTemplateParams = astLine.children.map(this._parseEmailTemplateParamAst.bind(this));
+                return campaignStep;
+            }
+
+            match = astLine.source.match(/^if (.*?)$/i);
+            if (match) {
+                campaignStep.type = 'condition';
+                campaignStep.conditionFunction = match[1].toLowerCase().replace(/ /g, '_');
+                return campaignStep;
+            }
+
+            match = astLine.source.match(/^wait for (.*?) (.*?)$/i);
+            if (match) {
+                campaignStep.type = 'wait';
+                var unit = match[2].toLowerCase();
+                var multiplier;
+                switch (unit) {
+                    case 'mins':
+                    case 'minute':
+                    case 'minutes':
+                        multiplier = 1;
+                        break;
+                    case 'hour':
+                    case 'hours':
+                        multiplier = 60;
+                        break;
+                    case 'day':
+                    case 'days':
+                        multiplier = 60 * 24;
+                        break;
+                    default :
+                        this.errors.push({
+                            line: astLine,
+                            message: quote(unit) + ' is not a valid wait unit.'
+                        });
+                        return campaignStep;
+
+                }
+
+                var n = parseInt(match[1], 10);
+                if (isNaN(n)) {
+                    this.errors.push({
+                        line: astLine,
+                        message: quote(match[1]) + ' is not a valid wait amount.'
+                    });
+                    return campaignStep;
+                }
+
+                campaignStep.waitMinutes = n * multiplier;
+                return campaignStep;
+            }
+
+            this.errors.push({
+                line: astLine,
+                message: quote(astLine.source) + ' is not a valid campaign step.'
+            });
+            return campaignStep;
+        },
+
+        /**
+         * Takes an astLine object for a custom field line and returns an object
+         * representing an email template parameter.
+         * @param {object} astLine
+         * @returns {object}
+         * @private
+         */
+        _parseEmailTemplateParamAst: function (astLine) {
+            var delimiter = astLine.source.indexOf(':');
+            var key = astLine.source.substring(0, delimiter);
+            var value = astLine.source.substring(delimiter + 1).trim();
+            var lastLineNo = astLine.lineNo;
+
+            // if no delimiter or key then this is a syntax error
+            if (delimiter < 1 || !key) {
+                this.errors.push({
+                    line: astLine,
+                    message: quote(astLine.source) + ' is not a valid custom field.'
+                });
+                return {
+                    key: '',
+                    value: ''
+                };
+            }
+
+            // join together any child lines text treating empty lines like paragraph breaks
+            value += astLine.children.map(function (child) {
+
+                var ret = child.source;
+
+                if (child.lineNo > lastLineNo + 1) {
+                    ret = '\n' + ret;
+                }
+
+                lastLineNo = child.lineNo;
+                return ret;
+
+            }).join(' ');
+
+            // return a custom field object
+            return {
+                key: key,
+                value: value
+            };
+        }
+
+    };
+
+    /**
+     * Convenience method for creating a new Erv instance with a program string.
+     * @param {string} str
+     * @returns {Erv}
+     * @static
+     */
+    Erv.fromString = function (str) {
+        var erv = new Erv();
+        erv.setProgramString(str);
+        return erv;
+    };
+
+    return Erv;
+
+}));
